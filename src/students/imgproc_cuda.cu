@@ -33,3 +33,24 @@ __global__ void getHistogramCuda(const unsigned char *src, int numPixels, int *h
 	atomicAdd(&hist[(3* 256) + achi], 1);
     }
 }
+__global__ void enhanceContrastLinearlyCuda(unsigned char *src, unsigned char *dest, 
+                                        unsigned char first, unsigned char last, 
+                                        int channel, int numPixels)
+{
+    assert((src != nullptr) && (dest != nullptr));
+
+    int threadCount = threadIdx.x + (blockIdx.x * blockDim.x);
+    //int temp = 4*threadCount;
+    for (;threadCount < numPixels; threadCount += blockDim.x * gridDim.x)
+    {
+        int temp = (4 * threadCount) + channel; // coordinate in images for this thread
+        if (src[temp] < first) {
+            dest[temp] = 0;
+        } else if (src[temp] > last) {
+            dest[temp] = 255;
+        } else {
+            // Anything else is scaled
+            dest[temp] = (unsigned char) ((255.0f/(last-first)) * (src[temp] - first));
+        }
+    }    
+}

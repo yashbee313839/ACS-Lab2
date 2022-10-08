@@ -14,10 +14,77 @@
 #include "../utils/Timer.hpp"
 #include <iostream>
 #include <cmath>
+#include "../baseline/imgproc.hpp"
 #include "../baseline/water.hpp"
 #include "../utils/Histogram.hpp"
 #include "water_cuda.hpp"
 #include "imgproc_cuda.hpp"
+std::shared_ptr<Image> runEnhanceStage(const Image *previous, const Histogram *hist, const WaterEffectOptions *options, Timer ts) {
+  // Create a new image to store the result
+  auto img_enhanced = std::make_shared<Image>(previous->width, previous->height);
+  
+  int numPixels = previous->height * previous->width;
+  int numBlocks = (numPixels + 32 - 1) / 32;
+  int blockSize = 32;
+
+  // Move src image to device memory
+  size_t img_size = sizeof(unsigned char) * numPixels * 4;
+  unsigned char *src;
+  cudaMallocManaged(&src, img_size);
+  cudaMemcpy((void *)src, (void *)(previous->raw.data()), img_size, cudaMemcpyHostToDevice);
+
+  ts.start();
+
+  // Determine the threshold from the histogram, by taking 10% of the maximum value in the histogram.
+  auto max_hist = (int) (hist->max(0) * 0.1);
+
+  unsigned char begin = 0;
+  unsigned char end = 255;
+
+  // Enhance each (non-alpha) channel of the source image
+  for (int i = 0; i < 3; i++)
+  {
+    // Obtain the first intensity that is above the threshold.
+    for (begin = 0; begin < hist->range; begin++) {
+      if (hist->count(begin, i) > max_hist) {
+        break;
+      }
+    }
+
+    // Obtain the last intensity that is above the threshold.
+    for (end = 255; end > begin; end--) {
+      if (hist->count(end, i) > max_hist) {
+        break;
+      }
+    }
+    enhanceContrastLinearlyCuda<<<numBlocks, blockSize>>>(src, src, begin, end, i, numPixels);
+    // Wait for completion
+    cudaDeviceSynchronize();
+    cudaGetLastError();
+  }
+  ts.stop();
+
+  std::cout << "Stage: Contrast enhance:        " << ts.seconds() << " s." << std::endl;
+
+  // Transfer enhanced image from device to host memory
+  cudaMemcpy(img_enhanced->raw.data(), (void *)src, img_size, cudaMemcpyDeviceToHost);
+
+  // Free device memory
+  cudaFree(src);
+
+  // Save the resulting image
+  if (options->save_intermediate)
+    img_enhanced->toPNG("output/" + options->img_name + "_enhancedCUDA.png");
+
+  // Create and save the enhanced histogram (if enabled).
+  if (options->enhance_hist) {
+    auto enhanced_hist = getHistogram(img_enhanced.get());
+    auto enhanced_hist_img = enhanced_hist.toImage();
+    enhanced_hist_img->toPNG("output/" + options->img_name + "_enhanced_histogramCUDA.png");
+  }
+
+  return img_enhanced;
+}
 std::shared_ptr<Histogram> runHistogramStage(const Image *previous, const WaterEffectOptions *options, Timer ts) {
     // Histogram to hold result
     // Histogram *hist_res = new Histogram();
@@ -76,6 +143,13 @@ Timer ts;
   if (options->histogram)
   {
     hist = runHistogramStage(src, options, ts);
+  }
+  if (options->enhance)
+  {
+    if (hist == nullptr) {
+      throw std::runtime_error("Cannot run enhance stage without histogram.");
+    }
+    img_result = runEnhanceStage(src, hist.get(), options, ts);
   }
   return nullptr;
   /* REPLACE THIS CODE WITH YOUR OWN WATER EFFECT PIPELINE */
