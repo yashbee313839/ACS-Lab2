@@ -33,3 +33,81 @@ __global__ void getHistogramCuda(const unsigned char *src, int numPixels, int *h
 	atomicAdd(&hist[(3* 256) + achi], 1);
     }
 }
+__global__ void enhanceContrastLinearlyCuda(unsigned char *src, unsigned char *dest, 
+                                        unsigned char first, unsigned char last, 
+                                        int channel, int numPixels)
+{
+    assert((src != nullptr) && (dest != nullptr));
+
+    int threadCount = threadIdx.x + (blockIdx.x * blockDim.x);
+    //int temp = 4*threadCount;
+    for (;threadCount < numPixels; threadCount += blockDim.x * gridDim.x)
+    {
+        int temp = (4 * threadCount) + channel; // coordinate in images for this thread
+        if (src[temp] < first) {
+            dest[temp] = 0;
+        } else if (src[temp] > last) {
+            dest[temp] = 255;
+        } else {
+            // Anything else is scaled
+            dest[temp] = (unsigned char) ((255.0f/(last-first)) * (src[temp] - first));
+        }
+    }    
+}
+
+__global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float frequency, int width, int height){
+    assert((src != nullptr) && (dest!=nullptr));
+    //checkDimensionsEqualOrThrow(src, dest);
+
+    int threadCount = threadIdx.x + (blockIdx.x * blockDim.x);
+
+    for (;threadCount < height * width; threadCount += blockDim.x * gridDim.x)
+    {
+	int temp = 4 * threadCount;
+        dest[temp] = 0;
+        dest[temp+1] = 0;
+        dest[temp+2] = 0;
+        dest[temp+3] = 0;
+
+        int y = threadCount / width;
+	int x = threadCount % width;	
+        float nx = -1.0f + (2.0f * x) / width;
+        float ny = -1.0f + (2.0f * y) / height;
+
+        // Calculate distance to center
+        auto dist = std::sqrt(std::pow(ny, 2) + std::pow(nx, 2));
+
+        // Calculate angle
+        float angle = std::atan2(ny, nx);
+
+        // Use a funky formula to make a lensing effect.
+        auto src_dist = std::pow(std::sin(dist * M_PI / 2.0 * frequency), 2);
+
+        // Check if this pixel lies within the source range, otherwise make this pixel transparent.
+        if ((src_dist > 1.0f)) {
+          continue;
+        }
+
+        // Calculate normalized lensed X and Y
+        auto nsx = src_dist * std::cos(angle);
+        auto nsy = src_dist * std::sin(angle);
+
+        // Rescale to image size
+        auto sx = int((nsx + 1.0) / 2 * width);
+        auto sy = int((nsy + 1.0) / 2 * height);
+
+        // Check bounds on source pixel
+        if ((sx >= width) || (sy >= height)) {
+          continue;
+        }
+
+        // Set destination pixel from source
+        //dest->pixel(x, y) = src->pixel(sx, sy);
+	int threadCountUpdated = sy*width+sx;
+	int temp1 = 4*threadCountUpdated; 
+        dest[temp]   = src[temp1];
+        dest[temp+1] = src[temp1+1];
+        dest[temp+2] = src[temp1+2];
+        dest[temp+3] = src[temp1+3];
+    }
+}

@@ -19,4 +19,7 @@
 #include "../utils/Histogram.hpp"
 
 __global__ void getHistogramCuda(const unsigned char *src, int numPixels, int *hist);
+__global__ void enhanceContrastLinearlyCuda(unsigned char *src, unsigned char *dest, unsigned char first, unsigned char last, int channel, int numPixels);
+__global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float frequency, int width, int height);
+
 /* You could use this file to declare seperate basic effects */
