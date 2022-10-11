@@ -19,6 +19,7 @@
 #include "../utils/Histogram.hpp"
 #include "water_cuda.hpp"
 #include "imgproc_cuda.hpp"
+#include "cuda_check.hpp"
 
 
 static inline void checkDimensionsEqualOrThrowErr(const Image *a, const Image *b) {
@@ -39,24 +40,23 @@ void performCudaConvolute(const Image *src, Image *dest, const Kernel *kernel) {
 
     size_t source_img_size = src->height * src->width * 4 * sizeof(unsigned char);
     size_t kernel_size = kernel->height * kernel->width * sizeof(int);
-    cudaMalloc(&src_img, source_img_size);
-    cudaMalloc(&dest_img, source_img_size);
-    cudaMalloc(&kernel_weights, kernel_size);
+    checkCudaErrors(cudaMalloc(&src_img, source_img_size));
+    checkCudaErrors(cudaMalloc(&dest_img, source_img_size));
+    checkCudaErrors(cudaMalloc(&kernel_weights, kernel_size));
 
-//   int err = cudaPeekAtLastError();
-//   if (err)
-//       std::cout << "ERROR at malloc:" << err << std::endl;
+    //int err = cudaPeekAtLastError();
+    //if (err)
+    //    std::cout << "ERROR at malloc:" << err << std::endl;
 
     size_t destination_img_size = dest->height * dest->width * 4 * sizeof(unsigned char);
-    cudaMemcpy(dest_img, dest->raw.data(), destination_img_size, cudaMemcpyHostToDevice);
-    cudaMemcpy(src_img, src->raw.data(), source_img_size, cudaMemcpyHostToDevice);
-    cudaMemcpy(kernel_weights, kernel->weights.data(), kernel->height * kernel->width * sizeof(int),
-               cudaMemcpyHostToDevice);
+    checkCudaErrors(cudaMemcpy(dest_img, dest->raw.data(), destination_img_size, cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(src_img, src->raw.data(), source_img_size, cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(kernel_weights, kernel->weights.data(), kernel->height * kernel->width * sizeof(int), cudaMemcpyHostToDevice));
 
-//   err = cudaPeekAtLastError();
-//   if (err)
-//       std::cout << "ERROR at memset and memcopy:" << err << std::endl;
-// auto does not work here
+    //   err = cudaPeekAtLastError();
+    //   if (err)
+    //       std::cout << "ERROR at memset and memcopy:" << err << std::endl;
+    // auto does not work here
     dim3 numthreads(32, 32, 1);
     dim3 numblocks((src->width / numthreads.x) + 1, (src->height / numthreads.y) + 1, 4);
 
@@ -66,14 +66,14 @@ void performCudaConvolute(const Image *src, Image *dest, const Kernel *kernel) {
                                                   kernel->xoff, kernel->yoff,
                                                   src_img, dest_img);
 
-    cudaDeviceSynchronize();
-//  int err = cudaPeekAtLastError();
-cudaMemcpy(dest->raw.data(),dest_img, destination_img_size, cudaMemcpyDeviceToHost);
-//       std::cout << "ERROR at copying values from device" << err << std::endl;
+    checkCudaErrors(cudaDeviceSynchronize());
+    //  int err = cudaPeekAtLastError();
+    checkCudaErrors(cudaMemcpy(dest->raw.data(),dest_img, destination_img_size, cudaMemcpyDeviceToHost));
+    //       std::cout << "ERROR at copying values from device" << err << std::endl;
 
-    cudaFree(src_img);
-    cudaFree(dest_img);
-    cudaFree(kernel_weights);
+    checkCudaErrors(cudaFree(src_img));
+    checkCudaErrors(cudaFree(dest_img));
+    checkCudaErrors(cudaFree(kernel_weights));
 }
 
 
@@ -108,9 +108,9 @@ std::shared_ptr<Image> runRippleStage(const Image *previous, const WaterEffectOp
   size_t img_size = sizeof(unsigned char) * numPixels * 4;
   unsigned char *src;
   unsigned char *dest;
-  cudaMallocManaged(&src, img_size);
-  cudaMallocManaged(&dest, img_size);
-  cudaMemcpy((void *)src, (void *)(previous->raw.data()), img_size, cudaMemcpyHostToDevice);
+  checkCudaErrors(cudaMallocManaged(&src, img_size));
+  checkCudaErrors(cudaMallocManaged(&dest, img_size));
+  checkCudaErrors(cudaMemcpy((void *)src, (void *)(previous->raw.data()), img_size, cudaMemcpyHostToDevice));
 
   //ts.start();
   // Apply the ripple effect
@@ -119,12 +119,12 @@ std::shared_ptr<Image> runRippleStage(const Image *previous, const WaterEffectOp
 
   //std::cout << "Stage: Ripple CUDA:        " << ts.seconds() << " s." << std::endl;
  // Transfer enhanced image from device to host memory
-  cudaDeviceSynchronize();
-  cudaMemcpy(img_rippled->raw.data(), (void *)dest, img_size, cudaMemcpyDeviceToHost);
+  checkCudaErrors(cudaDeviceSynchronize());
+  checkCudaErrors(cudaMemcpy(img_rippled->raw.data(), (void *)dest, img_size, cudaMemcpyDeviceToHost));
 
   // Free device memory
-  cudaFree(src);
-  cudaFree(dest);
+  checkCudaErrors(cudaFree(src));
+  checkCudaErrors(cudaFree(dest));
   // Save the resulting image
   if (options->save_intermediate)
     img_rippled->toPNG("output/" + options->img_name + "_rippledCUDA.png");
@@ -143,8 +143,8 @@ std::shared_ptr<Image> runEnhanceStage(const Image *previous, const Histogram *h
   // Move src image to device memory
   size_t img_size = sizeof(unsigned char) * numPixels * 4;
   unsigned char *src;
-  cudaMallocManaged(&src, img_size);
-  cudaMemcpy((void *)src, (void *)(previous->raw.data()), img_size, cudaMemcpyHostToDevice);
+  checkCudaErrors(cudaMallocManaged(&src, img_size));
+  checkCudaErrors(cudaMemcpy((void *)src, (void *)(previous->raw.data()), img_size, cudaMemcpyHostToDevice));
 
   //ts.start();
 
@@ -172,18 +172,18 @@ std::shared_ptr<Image> runEnhanceStage(const Image *previous, const Histogram *h
     }
     enhanceContrastLinearlyCuda<<<numBlocks, blockSize>>>(src, src, begin, end, i, numPixels);
     // Wait for completion
-    cudaDeviceSynchronize();
-    cudaGetLastError();
+    checkCudaErrors(cudaDeviceSynchronize());
+    checkCudaErrors(cudaGetLastError());
   }
   //ts.stop();
 
   //std::cout << "Stage: Contrast enhance CUDA:        " << ts.seconds() << " s." << std::endl;
 
   // Transfer enhanced image from device to host memory
-  cudaMemcpy(img_enhanced->raw.data(), (void *)src, img_size, cudaMemcpyDeviceToHost);
+  checkCudaErrors(cudaMemcpy(img_enhanced->raw.data(), (void *)src, img_size, cudaMemcpyDeviceToHost));
 
   // Free device memory
-  cudaFree(src);
+  checkCudaErrors(cudaFree(src));
 
   // Save the resulting image
   if (options->save_intermediate)
@@ -215,33 +215,33 @@ std::shared_ptr<Histogram> runHistogramStage(const Image *previous, const WaterE
 	// Move src 
     size_t img_size = sizeof(unsigned char) * numPixels * 4;
     unsigned char *src;
-    cudaMallocManaged(&src, img_size);
+    checkCudaErrors(cudaMallocManaged(&src, img_size));
     //move to device
-    cudaMemcpy((void *)src, (void *)(previous->raw.data()), img_size, cudaMemcpyHostToDevice);
+    checkCudaErrors(cudaMemcpy((void *)src, (void *)(previous->raw.data()), img_size, cudaMemcpyHostToDevice));
 
     // Set up device memory for histogram
     int *hist;
     size_t hist_size = sizeof(int) * 4 * 256;
-    cudaMallocManaged(&hist, hist_size);
-    cudaMemset(hist, 0, hist_size);
+    checkCudaErrors(cudaMallocManaged(&hist, hist_size));
+    checkCudaErrors(cudaMemset(hist, 0, hist_size));
 
     //ts.start();
     getHistogramCuda<<<numBlocks, blockSize>>>(src, numPixels, hist);
     // Wait for completion
-    cudaDeviceSynchronize();
+    checkCudaErrors(cudaDeviceSynchronize());
     //ts.stop();
     //std::cout << "Stage: Histogram CUDA:        " << ts.seconds() << " s." << std::endl;
 
     // Copy the result data back to host
-    cudaMemcpy(hist_res->values.data(), hist, hist_size, cudaMemcpyDeviceToHost);
+    checkCudaErrors(cudaMemcpy(hist_res->values.data(), hist, hist_size, cudaMemcpyDeviceToHost));
 
     if (options->save_intermediate) {
       // Copy raw data into histogram object
       auto hist_img = hist_res->toImage();
       hist_img->toPNG("output/" + options->img_name + "_histogramCUDA.png");
     }
-    cudaFree(src);
-    cudaFree(hist); 
+    checkCudaErrors(cudaFree(src));
+    checkCudaErrors(cudaFree(hist)); 
   }
   return hist_res;
 }
