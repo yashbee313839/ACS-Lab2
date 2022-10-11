@@ -112,6 +112,57 @@ __global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float f
     }
 }
 
+/*__global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float frequency, int width, int height){
+    //assert((src != nullptr) && (dest!=nullptr));
+    //checkDimensionsEqualOrThrow(src, dest);
+
+    //Thread Identifier for elements of width
+    int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+    //Thread Identifier for elements of height
+    int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    //Check no thread goes out of bounds
+    if ((x >= width) || (y >= height)) {
+        return;
+    }
+
+    dest[(y * width + x) * 4 + blockIdx.z] = 0;
+
+    float nx = -1.0f + (2.0f * x) / width;
+    float ny = -1.0f + (2.0f * y) / height;
+
+    // Calculate distance to center
+    auto dist = std::sqrt(std::pow(ny, 2) + std::pow(nx, 2));
+
+    // Calculate angle
+    float angle = std::atan2(ny, nx);
+
+    // Use a funky formula to make a lensing effect.
+    auto src_dist = std::pow(std::sin(dist * M_PI / 2.0 * frequency), 2);
+
+    // Check if this pixel lies within the source range, otherwise make this pixel transparent.
+    if ((src_dist > 1.0f)) {
+      return;
+    }
+
+    // Calculate normalized lensed X and Y
+    auto nsx = src_dist * std::cos(angle);
+    auto nsy = src_dist * std::sin(angle);
+
+    // Rescale to image size
+    auto sx = int((nsx + 1.0) / 2 * width);
+    auto sy = int((nsy + 1.0) / 2 * height);
+
+    // Check bounds on source pixel
+    if ((sx >= width) || (sy >= height)) {
+      return;
+    }
+
+    // Set destination pixel from source
+    //dest->pixel(x, y) = src->pixel(sx, sy);
+    dest[(y * width + x) * 4 + blockIdx.z] = src[(sy * width + sx) * 4 + blockIdx.z];
+}*/
+
 
 
 __global__ void convolutionKernelCuda(unsigned int height, unsigned int width,

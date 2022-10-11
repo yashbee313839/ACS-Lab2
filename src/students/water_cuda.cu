@@ -101,19 +101,23 @@ std::shared_ptr<Image> runRippleStage(const Image *previous, const WaterEffectOp
   int numPixels = previous->height * previous->width;
   int numBlocks = (numPixels + 31) / 32;
   int blockSize = 32;
+
+  dim3 numthreads(32, 32, 1);
+  dim3 numblocks((previous->width / numthreads.x) + 1, (previous->height / numthreads.y) + 1, 4);
   
   int height = previous->height;
   int width = previous->width;
-  // Move src image to device memory
   size_t img_size = sizeof(unsigned char) * numPixels * 4;
-  unsigned char *src;
-  unsigned char *dest;
+  unsigned char *src, *dest;
+
+  // Move src image to device memory
   checkCudaErrors(cudaMallocManaged(&src, img_size));
   checkCudaErrors(cudaMallocManaged(&dest, img_size));
   checkCudaErrors(cudaMemcpy((void *)src, (void *)(previous->raw.data()), img_size, cudaMemcpyHostToDevice));
 
   //ts.start();
   // Apply the ripple effect
+  //applyRippleCuda<<<numblocks,numthreads>>>(src, dest, options->ripple_frequency,width, height);
   applyRippleCuda<<<numBlocks,blockSize>>>(src, dest, options->ripple_frequency,width, height);
   //ts.stop();
 
