@@ -21,5 +21,10 @@
 __global__ void getHistogramCuda(const unsigned char *src, int numPixels, int *hist);
 __global__ void enhanceContrastLinearlyCuda(unsigned char *src, unsigned char *dest, unsigned char first, unsigned char last, int channel, int numPixels);
 __global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float frequency, int width, int height);
+__global__ void convolutionKernelCuda(unsigned int height, unsigned int width,
+                       int kernel_height, int kernel_width,
+                       float kernel_scale, float *kernel_weights,
+                       int kernel_xoff, int kernel_yoff,
+                       unsigned char *source, unsigned char *dest);
 
 /* You could use this file to declare seperate basic effects */

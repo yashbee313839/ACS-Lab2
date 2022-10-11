@@ -111,3 +111,48 @@ __global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float f
         dest[temp+3] = src[temp1+3];
     }
 }
+
+
+
+__global__ void convolutionKernelCuda(unsigned int height, unsigned int width,
+                       int kernel_height, int kernel_width,
+                       float kernel_scale, float *kernel_weights,
+                       int kernel_xoff, int kernel_yoff,
+                       unsigned char *source, unsigned char *dest) {
+    //To distinguish between each threads and to get the number of thread that is being executed
+    //Thread Identifier for elements of width
+    int i = (blockIdx.x * blockDim.x) + threadIdx.x;
+    //Thread Identifier for elements of height
+    int j = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+    //Check no thread goes out of bounds
+    if ((i >= width) || (j >= height)) {
+        return;
+    }
+
+    // Convolution result
+    auto c = 0.0;
+    // Loop over every kernel weight
+    for (int ky = -kernel_height / 2; ky <= kernel_height / 2; ky++) {
+        for (int kx = -kernel_width / 2; kx <= kernel_width / 2; kx++) {
+            // Convolute pixel x
+            int cx = i + kx;
+            // Convolute pixel y
+            int cy = j + ky;
+            // Bounds checking
+            if ((cx >= 0) && (cy >= 0) && (cx < width) && (cy < height)) {
+                // Pixel value
+                auto v = (float) source[(cy * width + cx) * 4 + blockIdx.z];
+                // Kernel weight
+                auto k = kernel_weights[((ky + kernel_yoff) * kernel_width) + (kx + kernel_xoff)];
+                // Multiply and accumulate
+                c += v * k;
+            }
+        }
+    }
+
+    // Set the channel to the new color
+    dest[(j * width + i) * 4 + blockIdx.z] = (unsigned char) (c * kernel_scale);
+}
+
+

@@ -20,6 +20,80 @@
 #include "water_cuda.hpp"
 #include "imgproc_cuda.hpp"
 
+
+static inline void checkDimensionsEqualOrThrowErr(const Image *a, const Image *b) {
+    assert(a != nullptr);
+    assert(b != nullptr);
+    if ((a->width != b->width) || (a->height != b->height)) {
+        throw std::domain_error("Source and destination image are not of equal dimensions.");
+    }
+}
+
+void performCudaConvolute(const Image *src, Image *dest, const Kernel *kernel) {
+    // Check arguments
+    assert((src != nullptr) && (dest != nullptr) && (kernel != nullptr));
+    checkDimensionsEqualOrThrowErr(src, dest);
+
+    unsigned char *src_img, *dest_img;
+    float *kernel_weights;
+
+    size_t source_img_size = src->height * src->width * 4 * sizeof(unsigned char);
+    size_t kernel_size = kernel->height * kernel->width * sizeof(int);
+    cudaMalloc(&src_img, source_img_size);
+    cudaMalloc(&dest_img, source_img_size);
+    cudaMalloc(&kernel_weights, kernel_size);
+
+//   int err = cudaPeekAtLastError();
+//   if (err)
+//       std::cout << "ERROR at malloc:" << err << std::endl;
+
+    size_t destination_img_size = dest->height * dest->width * 4 * sizeof(unsigned char);
+    cudaMemcpy(dest_img, dest->raw.data(), destination_img_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(src_img, src->raw.data(), source_img_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(kernel_weights, kernel->weights.data(), kernel->height * kernel->width * sizeof(int),
+               cudaMemcpyHostToDevice);
+
+//   err = cudaPeekAtLastError();
+//   if (err)
+//       std::cout << "ERROR at memset and memcopy:" << err << std::endl;
+// auto does not work here
+    dim3 numthreads(32, 32, 1);
+    dim3 numblocks((src->width / numthreads.x) + 1, (src->height / numthreads.y) + 1, 4);
+
+    convolutionKernelCuda <<<numblocks, numthreads>>>(src->height, src->width,
+                                                  kernel->height, kernel->width,
+                                                  kernel->scale, kernel_weights,
+                                                  kernel->xoff, kernel->yoff,
+                                                  src_img, dest_img);
+
+    cudaDeviceSynchronize();
+//  int err = cudaPeekAtLastError();
+cudaMemcpy(dest->raw.data(),dest_img, destination_img_size, cudaMemcpyDeviceToHost);
+//       std::cout << "ERROR at copying values from device" << err << std::endl;
+
+    cudaFree(src_img);
+    cudaFree(dest_img);
+    cudaFree(kernel_weights);
+}
+
+
+std::shared_ptr<Image> runBlurStageCUDA(const Image *previous, const WaterEffectOptions *options, Timer ts) {
+  // Create a Gaussian convolution kernel
+  Kernel gaussian = Kernel::gaussian(options->blur_size, options->blur_size, 1.0);
+
+  // Create a new image to store the result
+  auto img_blurred = std::make_shared<Image>(previous->width, previous->height);
+
+  // Blur every channel using the gaussian kernel
+  performCudaConvolute(previous, img_blurred.get(), &gaussian);
+
+  // Save the resulting image
+  if (options->save_intermediate)
+    img_blurred->toPNG("output/" + options->img_name + "_blurred_cuda.png");
+
+  return img_blurred;
+}
+
 std::shared_ptr<Image> runRippleStage(const Image *previous, const WaterEffectOptions *options, Timer ts) {
   // Create a new image to store the result
   auto img_rippled = std::make_shared<Image>(previous->width, previous->height);
@@ -44,8 +118,7 @@ std::shared_ptr<Image> runRippleStage(const Image *previous, const WaterEffectOp
   //ts.stop();
 
   //std::cout << "Stage: Ripple CUDA:        " << ts.seconds() << " s." << std::endl;
-
-  // Transfer enhanced image from device to host memory
+ // Transfer enhanced image from device to host memory
   cudaDeviceSynchronize();
   cudaMemcpy(img_rippled->raw.data(), (void *)dest, img_size, cudaMemcpyDeviceToHost);
 
@@ -209,6 +282,20 @@ std::shared_ptr<Image> runWaterEffectCUDA(const Image *src, const WaterEffectOpt
     ts.stop();
     std::cout << "Stage: Ripple effect CUDA:    " << ts.seconds() << " s." << std::endl;
   }
-  return nullptr;
+
+ // Gaussian blur stage
+  if (options->blur) {
+    ts.start();
+    if (img_result == nullptr) {
+      img_result = runBlurStageCUDA(src, options,ts);
+    } else {
+      img_result = runBlurStageCUDA(img_result.get(), options,ts);
+    }
+    ts.stop();
+    std::cout << "Stage: Gaussian Blur CUDA:    " << ts.seconds() << " s." << std::endl;
+  }
+
+  return img_result;
   /* REPLACE THIS CODE WITH YOUR OWN WATER EFFECT PIPELINE */
+
 }
