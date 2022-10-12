@@ -55,7 +55,7 @@ __global__ void enhanceContrastLinearlyCuda(unsigned char *src, unsigned char *d
     }    
 }
 
-__global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float frequency, int width, int height){
+/*__global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float frequency, int width, int height){
     assert((src != nullptr) && (dest!=nullptr));
     //checkDimensionsEqualOrThrow(src, dest);
 
@@ -110,9 +110,9 @@ __global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float f
         dest[temp+2] = src[temp1+2];
         dest[temp+3] = src[temp1+3];
     }
-}
+}*/
 
-/*__global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float frequency, int width, int height){
+__global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float frequency, int width, int height){
     //assert((src != nullptr) && (dest!=nullptr));
     //checkDimensionsEqualOrThrow(src, dest);
 
@@ -161,7 +161,7 @@ __global__ void applyRippleCuda(unsigned char *src, unsigned char *dest, float f
     // Set destination pixel from source
     //dest->pixel(x, y) = src->pixel(sx, sy);
     dest[(y * width + x) * 4 + blockIdx.z] = src[(sy * width + sx) * 4 + blockIdx.z];
-}*/
+}
 
 
 

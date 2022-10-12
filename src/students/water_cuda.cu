@@ -117,8 +117,8 @@ std::shared_ptr<Image> runRippleStage(const Image *previous, const WaterEffectOp
 
   //ts.start();
   // Apply the ripple effect
-  //applyRippleCuda<<<numblocks,numthreads>>>(src, dest, options->ripple_frequency,width, height);
-  applyRippleCuda<<<numBlocks,blockSize>>>(src, dest, options->ripple_frequency,width, height);
+  applyRippleCuda<<<numblocks,numthreads>>>(src, dest, options->ripple_frequency,width, height);
+  //applyRippleCuda<<<numBlocks,blockSize>>>(src, dest, options->ripple_frequency,width, height);
   //ts.stop();
 
   //std::cout << "Stage: Ripple CUDA:        " << ts.seconds() << " s." << std::endl;
@@ -216,18 +216,18 @@ std::shared_ptr<Histogram> runHistogramStage(const Image *previous, const WaterE
     
     if (options->histogram) {
    	 
-	// Move src 
+    // Move src 
     size_t img_size = sizeof(unsigned char) * numPixels * 4;
     unsigned char *src;
-    checkCudaErrors(cudaMallocManaged(&src, img_size));
-    //move to device
-    checkCudaErrors(cudaMemcpy((void *)src, (void *)(previous->raw.data()), img_size, cudaMemcpyHostToDevice));
-
     // Set up device memory for histogram
     int *hist;
     size_t hist_size = sizeof(int) * 4 * 256;
+
+    checkCudaErrors(cudaMallocManaged(&src, img_size));
     checkCudaErrors(cudaMallocManaged(&hist, hist_size));
-    checkCudaErrors(cudaMemset(hist, 0, hist_size));
+    //move to device
+    checkCudaErrors(cudaMemcpy((void *)src, (void *)(previous->raw.data()), img_size, cudaMemcpyHostToDevice));
+    //checkCudaErrors(cudaMemset(hist, 0, hist_size));
 
     //ts.start();
     getHistogramCuda<<<numBlocks, blockSize>>>(src, numPixels, hist);
@@ -256,6 +256,12 @@ std::shared_ptr<Image> runWaterEffectCUDA(const Image *src, const WaterEffectOpt
   // Smart pointers to intermediate images:
   std::shared_ptr<Histogram> hist;
   std::shared_ptr<Image> img_result;
+
+  float *a;
+
+  // Allocate some CUDA unified memory
+  checkCudaErrors(cudaMallocManaged(&a, 4 * sizeof(float)));
+
   // Histogram stage
   if (options->histogram)
   {
